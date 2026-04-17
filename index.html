@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FlightSense — Flight Delay Predictor</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #f7f6f3;
+    --surface:   #ffffff;
+    --border:    #e4e2dc;
+    --text:      #1a1916;
+    --muted:     #7a7870;
+    --accent:    #1a1916;
+    --red:       #c0392b;
+    --green:     #1e7e4f;
+    --blue:      #1a4fa3;
+    --mono:      'DM Mono', monospace;
+    --sans:      'DM Sans', sans-serif;
+  }
+
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    font-size: 15px;
+    line-height: 1.6;
+  }
+
+  /* NAV */
+  nav {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .nav-inner {
+    max-width: 1100px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 2rem;
+    height: 56px;
+  }
+  .logo {
+    font-family: var(--mono);
+    font-size: 15px;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .logo-dot { width: 8px; height: 8px; background: var(--text); border-radius: 50%; }
+  .nav-tabs { display: flex; gap: 2px; }
+  .tab-btn {
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 400;
+    color: var(--muted);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 6px 14px;
+    border-radius: 6px;
+    transition: all 0.15s;
+  }
+  .tab-btn:hover { color: var(--text); background: var(--bg); }
+  .tab-btn.active { color: var(--text); background: var(--bg); font-weight: 500; }
+
+  /* PAGES */
+  .page { display: none; max-width: 1100px; margin: 0 auto; padding: 3rem 2rem; }
+  .page.active { display: block; }
+
+  /* PAGE HEADER */
+  .page-header { margin-bottom: 2.5rem; }
+  .page-header h1 { font-size: 26px; font-weight: 600; letter-spacing: -0.03em; margin-bottom: 6px; }
+  .page-header p { color: var(--muted); font-size: 14px; }
+
+  /* PREDICTOR */
+  .predictor-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+    align-items: start;
+  }
+  @media (max-width: 720px) { .predictor-grid { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.75rem;
+  }
+  .card h2 { font-size: 14px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 1.25rem; }
+
+  .field { margin-bottom: 1.1rem; }
+  .field label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 5px; color: var(--text); }
+  .field select, .field input {
+    width: 100%;
+    padding: 9px 12px;
+    font-family: var(--sans);
+    font-size: 14px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.15s;
+    appearance: none;
+    -webkit-appearance: none;
+  }
+  .field select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%237a7870' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px; }
+  .field select:focus, .field input:focus { border-color: var(--text); }
+
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  .predict-btn {
+    width: 100%;
+    padding: 11px;
+    font-family: var(--sans);
+    font-size: 14px;
+    font-weight: 500;
+    background: var(--text);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    margin-top: 0.5rem;
+    transition: opacity 0.15s;
+    letter-spacing: 0.01em;
+  }
+  .predict-btn:hover { opacity: 0.85; }
+
+  /* RESULT */
+  .result-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 280px;
+    color: var(--muted);
+    font-size: 13px;
+    text-align: center;
+    gap: 12px;
+  }
+  .result-empty svg { opacity: 0.3; }
+
+  .result-content { display: none; }
+  .result-content.show { display: block; }
+  .result-empty.hide { display: none; }
+
+  .verdict-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    border-radius: 99px;
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 1.25rem;
+  }
+  .verdict-badge.delayed { background: #fdecea; color: var(--red); }
+  .verdict-badge.ontime  { background: #e8f5ee; color: var(--green); }
+  .verdict-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+
+  .prob-number {
+    font-family: var(--mono);
+    font-size: 52px;
+    font-weight: 400;
+    letter-spacing: -0.04em;
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+  .prob-label { font-size: 13px; color: var(--muted); margin-bottom: 1.5rem; }
+
+  .prob-bar-track {
+    height: 6px;
+    background: var(--border);
+    border-radius: 99px;
+    overflow: hidden;
+    margin-bottom: 1.5rem;
+  }
+  .prob-bar-fill {
+    height: 100%;
+    border-radius: 99px;
+    transition: width 0.5s cubic-bezier(0.4,0,0.2,1);
+  }
+
+  .model-breakdown {
+    border-top: 1px solid var(--border);
+    padding-top: 1.25rem;
+    margin-top: 0.5rem;
+  }
+  .model-breakdown h3 { font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); margin-bottom: 0.9rem; }
+  .model-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-size: 13px;
+  }
+  .model-name { color: var(--muted); }
+  .model-val { font-family: var(--mono); font-size: 12px; font-weight: 500; }
+  .model-mini-bar {
+    flex: 1;
+    height: 4px;
+    background: var(--border);
+    border-radius: 99px;
+    margin: 0 12px;
+    overflow: hidden;
+  }
+  .model-mini-fill { height: 100%; border-radius: 99px; }
+
+  .insight-box {
+    background: var(--bg);
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 1.25rem;
+    line-height: 1.5;
+  }
+  .insight-box strong { color: var(--text); }
+
+  /* CHARTS */
+  .charts-intro { color: var(--muted); font-size: 14px; margin-bottom: 2rem; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.25rem; }
+
+  .chart-upload-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1.25rem;
+  }
+  .chart-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .chart-card-header {
+    padding: 1rem 1.25rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .chart-card-header h3 { font-size: 14px; font-weight: 500; margin-bottom: 2px; }
+  .chart-card-header p { font-size: 12px; color: var(--muted); }
+  .chart-img-area {
+    min-height: 220px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    cursor: pointer;
+    background: var(--bg);
+    transition: background 0.15s;
+  }
+  .chart-img-area:hover { background: #eeeee8; }
+  .chart-img-area img { width: 100%; height: 100%; object-fit: contain; display: none; }
+  .chart-img-area img.loaded { display: block; }
+  .upload-prompt {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    color: var(--muted);
+    font-size: 12px;
+    pointer-events: none;
+  }
+  .upload-prompt.hidden { display: none; }
+  .upload-prompt svg { opacity: 0.4; }
+  .chart-file-input { display: none; }
+
+  /* RESULTS */
+  .results-table-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 2rem;
+  }
+  table { width: 100%; border-collapse: collapse; }
+  thead tr { border-bottom: 1px solid var(--border); }
+  thead th {
+    padding: 12px 20px;
+    text-align: left;
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--muted);
+  }
+  tbody tr { border-bottom: 1px solid var(--border); transition: background 0.1s; }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: var(--bg); }
+  tbody td {
+    padding: 14px 20px;
+    font-size: 14px;
+  }
+  td.model-cell { font-weight: 500; }
+  td.metric { font-family: var(--mono); font-size: 13px; }
+  td.best { color: var(--green); font-weight: 600; }
+  td.worst { color: var(--red); }
+
+  .tag {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 500;
+    padding: 2px 8px;
+    border-radius: 99px;
+    margin-left: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .tag-baseline { background: #f0ede6; color: #7a7870; }
+  .tag-best { background: #e8f5ee; color: var(--green); }
+
+  .metric-cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+  @media (max-width: 600px) { .metric-cards { grid-template-columns: 1fr 1fr; } }
+
+  .metric-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.25rem;
+  }
+  .metric-card .mc-label { font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); margin-bottom: 6px; }
+  .metric-card .mc-val { font-family: var(--mono); font-size: 28px; font-weight: 400; letter-spacing: -0.03em; }
+  .metric-card .mc-model { font-size: 12px; color: var(--muted); margin-top: 3px; }
+
+  .result-note {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.25rem 1.5rem;
+    font-size: 14px;
+    color: var(--muted);
+    line-height: 1.7;
+  }
+  .result-note strong { color: var(--text); }
+
+  /* ABOUT */
+  .about-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 2rem; }
+  @media (max-width: 680px) { .about-grid { grid-template-columns: 1fr; } }
+
+  .about-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem;
+  }
+  .about-card h3 { font-size: 13px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 0.75rem; }
+  .about-card p { font-size: 14px; line-height: 1.7; color: var(--text); }
+
+  .team-list { list-style: none; }
+  .team-list li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    font-size: 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .team-list li:last-child { border-bottom: none; }
+  .team-initials {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 600;
+    font-family: var(--mono);
+    flex-shrink: 0;
+  }
+
+  .features-list { list-style: none; }
+  .features-list li {
+    padding: 7px 0;
+    font-size: 14px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--muted);
+  }
+  .features-list li:last-child { border-bottom: none; }
+  .features-list li span { color: var(--text); font-weight: 500; min-width: 90px; }
+
+  .arch-steps { display: flex; flex-direction: column; gap: 6px; }
+  .arch-step {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+  }
+  .step-num {
+    font-family: var(--mono);
+    font-size: 11px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--text);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .step-arrow { color: var(--border); font-size: 10px; text-align: center; margin-left: 10px; }
+
+  .disclaimer {
+    margin-top: 2rem;
+    padding: 1rem 1.25rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <div class="logo">
+      <div class="logo-dot"></div>
+      FlightSense
+    </div>
+    <div class="nav-tabs">
+      <button class="tab-btn active" onclick="showPage('predictor')">Predictor</button>
+      <button class="tab-btn" onclick="showPage('charts')">EDA Charts</button>
+      <button class="tab-btn" onclick="showPage('results')">Model Results</button>
+      <button class="tab-btn" onclick="showPage('about')">About</button>
+    </div>
+  </div>
+</nav>
+
+<!-- PREDICTOR -->
+<div id="page-predictor" class="page active">
+  <div class="page-header">
+    <h1>Flight Delay Predictor</h1>
+    <p>Enter flight details to predict the probability of a 15+ minute arrival delay.</p>
+  </div>
+
+  <div class="predictor-grid">
+    <div class="card">
+      <h2>Flight Details</h2>
+
+      <div class="field-row">
+        <div class="field">
+          <label>Day of Week</label>
+          <select id="dow">
+            <option value="1">Monday</option>
+            <option value="2">Tuesday</option>
+            <option value="3">Wednesday</option>
+            <option value="4">Thursday</option>
+            <option value="5" selected>Friday</option>
+            <option value="6">Saturday</option>
+            <option value="7">Sunday</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Distance (miles)</label>
+          <input type="number" id="distance" value="850" min="50" max="5000">
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label>Departure Hour (0–23)</label>
+          <input type="number" id="dep_hour" value="17" min="0" max="23">
+        </div>
+        <div class="field">
+          <label>Arrival Hour (0–23)</label>
+          <input type="number" id="arr_hour" value="19" min="0" max="23">
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Airline</label>
+        <select id="carrier">
+          <option value="0">Alaska (AS)</option>
+          <option value="1">American (AA)</option>
+          <option value="2">Delta (DL)</option>
+          <option value="3">Frontier (F9)</option>
+          <option value="4">JetBlue (B6)</option>
+          <option value="5" selected>Southwest (WN)</option>
+          <option value="6">Spirit (NK)</option>
+          <option value="7">United (UA)</option>
+        </select>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label>Origin Airport</label>
+          <select id="origin">
+            <option value="0">Northeast (JFK/BOS/EWR)</option>
+            <option value="1" selected>Southeast (ATL/MIA/CLT)</option>
+            <option value="2">Midwest (ORD/DTW/MSP)</option>
+            <option value="3">Southwest (LAX/SAN/PHX)</option>
+            <option value="4">Mountain (DEN/SLC/LAS)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Destination Airport</label>
+          <select id="dest">
+            <option value="0">Northeast (JFK/BOS/EWR)</option>
+            <option value="1">Southeast (ATL/MIA/CLT)</option>
+            <option value="2">Midwest (ORD/DTW/MSP)</option>
+            <option value="3" selected>Southwest (LAX/SAN/PHX)</option>
+            <option value="4">Mountain (DEN/SLC/LAS)</option>
+          </select>
+        </div>
+      </div>
+
+      <button class="predict-btn" onclick="predict()">Run Prediction</button>
+    </div>
+
+    <div class="card">
+      <h2>Prediction Result</h2>
+
+      <div class="result-empty" id="result-empty">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/>
+        </svg>
+        Fill in the flight details and click Run Prediction.
+      </div>
+
+      <div class="result-content" id="result-content">
+        <div id="verdict-badge" class="verdict-badge">
+          <div class="verdict-dot"></div>
+          <span id="verdict-text"></span>
+        </div>
+
+        <div class="prob-number" id="prob-number">--</div>
+        <div class="prob-label">probability of delay (≥15 min)</div>
+
+        <div class="prob-bar-track">
+          <div class="prob-bar-fill" id="prob-bar" style="width:0%"></div>
+        </div>
+
+        <div class="model-breakdown">
+          <h3>Model Breakdown</h3>
+          <div class="model-row">
+            <span class="model-name">Logistic Regression</span>
+            <div class="model-mini-bar"><div class="model-mini-fill" id="bar-log" style="width:0%; background:#7a7870"></div></div>
+            <span class="model-val" id="val-log">--%</span>
+          </div>
+          <div class="model-row">
+            <span class="model-name">MLP</span>
+            <div class="model-mini-bar"><div class="model-mini-fill" id="bar-mlp" style="width:0%; background:#1a4fa3"></div></div>
+            <span class="model-val" id="val-mlp">--%</span>
+          </div>
+          <div class="model-row">
+            <span class="model-name">Bidirectional LSTM</span>
+            <div class="model-mini-bar"><div class="model-mini-fill" id="bar-lstm" style="width:0%; background:#1a1916"></div></div>
+            <span class="model-val" id="val-lstm">--%</span>
+          </div>
+        </div>
+
+        <div class="insight-box" id="insight-box"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CHARTS -->
+<div id="page-charts" class="page">
+  <div class="page-header">
+    <h1>Exploratory Data Analysis</h1>
+    <p>Click any chart area to upload your PNG from the notebook.</p>
+  </div>
+
+  <div class="charts-intro">
+    Dataset: ~4.2 million domestic flights from the U.S. Bureau of Transportation Statistics, May–October 2025. Target variable: arrival delay of 15 minutes or more.
+  </div>
+
+  <div class="chart-upload-grid">
+    <div class="chart-card">
+      <div class="chart-card-header">
+        <h3>Class Distribution</h3>
+        <p>Delayed vs. not delayed — shows class imbalance</p>
+      </div>
+      <div class="chart-img-area">
+        <img src="images/fig_class_distribution.png" style="display:block; width:100%;">
+      </div>
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-card-header">
+        <h3>Delay Rate by Hour</h3>
+        <p>Evening flights accumulate more delays</p>
+      </div>
+      <div class="chart-img-area">
+        <img src="images/fig_delay_by_hour.png" style="display:block; width:100%;">
+      </div>
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-card-header">
+        <h3>Delay Rate by Day of Week</h3>
+        <p>Fridays and Sundays have the highest delay rates</p>
+      </div>
+      <div class="chart-img-area">
+        <img src="images/fig_delay_by_day.png" style="display:block; width:100%;">
+      </div>
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-card-header">
+        <h3>Delay Rate by Distance</h3>
+        <p>Short-haul flights are more exposed to congestion</p>
+      </div>
+      <div class="chart-img-area">
+        <img src="images/fig_delay_by_distance.png" style="display:block; width:100%;">
+      </div>
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-card-header">
+        <h3>Correlation Heatmap</h3>
+        <p>No single feature dominates — problem is non-linear</p>
+      </div>
+      <div class="chart-img-area">
+        <img src="images/fig_correlation_heatmap.png" style="display:block; width:100%;">
+      </div>
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-card-header">
+        <h3>Training Curves</h3>
+        <p>MLP vs LSTM loss and AUC over epochs</p>
+      </div>
+      <div class="chart-img-area">
+        <img src="images/fig_training_curves.png" style="display:block; width:100%;">
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- RESULTS -->
+<div id="page-results" class="page">
+  <div class="page-header">
+    <h1>Model Results</h1>
+    <p>Final evaluation on the held-out test set (~420k flights never seen during training).</p>
+  </div>
+
+  <div class="metric-cards">
+    <div class="metric-card">
+      <div class="mc-label">Best ROC-AUC</div>
+      <div class="mc-val">0.6905</div>
+      <div class="mc-model">Bidirectional LSTM</div>
+    </div>
+    <div class="metric-card">
+      <div class="mc-label">Best F1 Score</div>
+      <div class="mc-val">0.4571</div>
+      <div class="mc-model">Bidirectional LSTM</div>
+    </div>
+    <div class="metric-card">
+      <div class="mc-label">Best Recall</div>
+      <div class="mc-val">0.6761</div>
+      <div class="mc-model">Bidirectional LSTM</div>
+    </div>
+  </div>
+
+  <div class="results-table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Model</th>
+          <th>Accuracy</th>
+          <th>Precision</th>
+          <th>Recall</th>
+          <th>F1 Score</th>
+          <th>ROC-AUC</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="model-cell">Logistic Regression <span class="tag tag-baseline">Baseline</span></td>
+          <td class="metric best">0.6099</td>
+          <td class="metric worst">0.3305</td>
+          <td class="metric worst">0.6452</td>
+          <td class="metric worst">0.4371</td>
+          <td class="metric worst">0.6552</td>
+        </tr>
+        <tr>
+          <td class="model-cell">MLP</td>
+          <td class="metric">0.6189</td>
+          <td class="metric">0.3414</td>
+          <td class="metric">0.6711</td>
+          <td class="metric">0.4526</td>
+          <td class="metric">0.6847</td>
+        </tr>
+        <tr>
+          <td class="model-cell">Bidirectional LSTM <span class="tag tag-best">Best</span></td>
+          <td class="metric">0.6230</td>
+          <td class="metric best">0.3453</td>
+          <td class="metric best">0.6761</td>
+          <td class="metric best">0.4571</td>
+          <td class="metric best">0.6905</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="chart-upload-grid" style="margin-bottom: 2rem;">
+    <div class="chart-card">
+      <div class="chart-card-header">
+        <h3>Model Comparison Chart</h3>
+        <p>All metrics side by side</p>
+      </div>
+      <div class="chart-img-area">
+        <img src="images/fig_model_comparison.png" style="display:block; width:100%;">
+      </div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-card-header">
+        <h3>Confusion Matrices</h3>
+        <p>Where each model makes mistakes</p>
+      </div>
+      <div class="chart-img-area">
+        <img src="images/fig_confusion_matrices.png" style="display:block; width:100%;">
+      </div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-card-header">
+        <h3>ROC Curves</h3>
+        <p>All three models overlaid</p>
+      </div>
+      <div class="chart-img-area">
+        <img src="images/fig_roc_curves.png" style="display:block; width:100%;">
+      </div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-card-header">
+        <h3>Precision-Recall Curves</h3>
+        <p>More informative than ROC for imbalanced data</p>
+      </div>
+      <div class="chart-img-area">
+        <img src="images/fig_pr_curves.png" style="display:block; width:100%;">
+      </div>
+    </div>
+  </div>
+
+  <div class="result-note">
+    <strong>Why accuracy looks low:</strong> The dataset is ~80% not-delayed. A model that always predicts "not delayed" scores 80% accuracy without learning anything. We focus on <strong>Recall</strong> (catching actual delays) and <strong>F1 Score</strong> (balance of precision and recall) as our primary metrics. The LSTM's ROC-AUC of 0.6905 means it correctly ranks a delayed flight above a non-delayed flight 69% of the time, versus 50% for random guessing.
+  </div>
+</div>
+
+<!-- ABOUT -->
+<div id="page-about" class="page">
+  <div class="page-header">
+    <h1>About This Project</h1>
+    <p>CS 478 — Deep Learning, Spring 2026</p>
+  </div>
+
+  <div class="about-grid">
+    <div class="about-card">
+      <h3>Team</h3>
+      <ul class="team-list">
+        <li><div class="team-initials">EE</div>Elias Estacion</li>
+        <li><div class="team-initials">RH</div>Rochane Hurst</li>
+        <li><div class="team-initials">MR</div>Meliton Rojas</li>
+        <li><div class="team-initials">BB</div>Bricio Blancas Salgado</li>
+        <li><div class="team-initials">WS</div>Wendy Santiago</li>
+        <li><div class="team-initials">MV</div>Michael Vu</li>
+      </ul>
+    </div>
+
+    <div class="about-card">
+      <h3>Dataset</h3>
+      <ul class="features-list">
+        <li><span>Source</span> U.S. Bureau of Transportation Statistics</li>
+        <li><span>Period</span> May – October 2025</li>
+        <li><span>Size</span> ~4.2 million flights</li>
+        <li><span>Target</span> Arrival delay >= 15 minutes</li>
+        <li><span>Features</span> 7 (schedule-based)</li>
+        <li><span>Split</span> 80% train / 10% val / 10% test</li>
+      </ul>
+    </div>
+
+    <div class="about-card">
+      <h3>Features Used</h3>
+      <ul class="features-list">
+        <li><span>DAY_OF_WEEK</span> Day the flight operates</li>
+        <li><span>DEP_HOUR</span> Scheduled departure hour</li>
+        <li><span>ARR_HOUR</span> Scheduled arrival hour</li>
+        <li><span>DISTANCE</span> Flight distance in miles</li>
+        <li><span>CARRIER_ENC</span> Airline (label encoded)</li>
+        <li><span>ORIGIN_ENC</span> Origin airport (label encoded)</li>
+        <li><span>DEST_ENC</span> Destination airport (label encoded)</li>
+      </ul>
+    </div>
+
+    <div class="about-card">
+      <h3>LSTM Architecture</h3>
+      <div class="arch-steps">
+        <div class="arch-step"><div class="step-num">1</div>Input sequence (7 timesteps x 1 feature)</div>
+        <div class="step-arrow">↓</div>
+        <div class="arch-step"><div class="step-num">2</div>Bidirectional LSTM (64 units) + BatchNorm + Dropout</div>
+        <div class="step-arrow">↓</div>
+        <div class="arch-step"><div class="step-num">3</div>Bidirectional LSTM (32 units) + BatchNorm + Dropout</div>
+        <div class="step-arrow">↓</div>
+        <div class="arch-step"><div class="step-num">4</div>Dense (64) + Dense (32) classification head</div>
+        <div class="step-arrow">↓</div>
+        <div class="arch-step"><div class="step-num">5</div>Sigmoid output — delay probability</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="disclaimer">
+    The predictor on this site simulates model behavior based on patterns learned from the training data. It does not run the actual trained model weights in the browser. For exact predictions, load the saved <code>.keras</code> files using TensorFlow/Keras in Python.
+  </div>
+</div>
+
+<script>
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  event.target.classList.add('active');
+}
+
+function triggerUpload(id) { document.getElementById(id).click(); }
+
+function loadChart(input, imgId, promptId) {
+  if (!input.files || !input.files[0]) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = document.getElementById(imgId);
+    img.src = e.target.result;
+    img.classList.add('loaded');
+    document.getElementById(promptId).classList.add('hidden');
+  };
+  reader.readAsDataURL(input.files[0]);
+}
+
+function sigmoid(x) { return 1 / (1 + Math.exp(-x)); }
+
+function predict() {
+  const dow     = +document.getElementById('dow').value;
+  const dist    = +document.getElementById('distance').value;
+  const dep     = +document.getElementById('dep_hour').value;
+  const arr     = +document.getElementById('arr_hour').value;
+  const carrier = +document.getElementById('carrier').value;
+  const origin  = +document.getElementById('origin').value;
+  const dest    = +document.getElementById('dest').value;
+
+  // Logistic regression approximation
+  let z = -1.2;
+  z += 0.04 * (dow - 4);
+  z += -0.0001 * (dist - 850);
+  z += 0.055 * (dep - 12);
+  z += 0.02 * (arr - 14);
+  z += (carrier === 3 || carrier === 6) ? 0.18 : (carrier === 0 || carrier === 2) ? -0.12 : 0.02;
+  z += (origin === 2) ? 0.1 : (origin === 0) ? 0.05 : 0;
+  const pLog = sigmoid(z);
+
+  // MLP approximation (slightly stronger)
+  let mlpScore = pLog;
+  if (dep >= 17) mlpScore += 0.04 + (dep - 17) * 0.012;
+  if (dep >= 21) mlpScore += 0.05;
+  if (dow === 5 || dow === 7) mlpScore += 0.04;
+  if (dow === 6) mlpScore -= 0.025;
+  if (dist < 300) mlpScore += 0.025;
+  mlpScore = Math.max(0.05, Math.min(0.90, mlpScore));
+
+  // LSTM — also picks up on feature interactions
+  let lstmScore = mlpScore;
+  const originDestInteraction = Math.abs(origin - dest);
+  lstmScore += originDestInteraction * 0.008;
+  if (dep >= 17 && (carrier === 3 || carrier === 6)) lstmScore += 0.03;
+  if (dep <= 7 && dist < 400) lstmScore += 0.02;
+  lstmScore = Math.max(0.05, Math.min(0.92, lstmScore));
+
+  const ensemble = pLog * 0.20 + mlpScore * 0.38 + lstmScore * 0.42;
+  const pct = Math.round(ensemble * 100);
+  const isDelayed = ensemble > 0.5;
+
+  // Update UI
+  document.getElementById('result-empty').classList.add('hide');
+  const rc = document.getElementById('result-content');
+  rc.classList.add('show');
+
+  const badge = document.getElementById('verdict-badge');
+  badge.className = 'verdict-badge ' + (isDelayed ? 'delayed' : 'ontime');
+  document.getElementById('verdict-text').textContent = isDelayed ? 'Likely Delayed' : 'Likely On Time';
+
+  document.getElementById('prob-number').textContent = pct + '%';
+
+  const bar = document.getElementById('prob-bar');
+  bar.style.width = pct + '%';
+  bar.style.background = isDelayed ? '#c0392b' : '#1e7e4f';
+
+  const setModel = (suffix, val) => {
+    document.getElementById('val-' + suffix).textContent = Math.round(val * 100) + '%';
+    document.getElementById('bar-' + suffix).style.width = Math.round(val * 100) + '%';
+  };
+  setModel('log', pLog);
+  setModel('mlp', mlpScore);
+  setModel('lstm', lstmScore);
+
+  const insights = [];
+  if (dep >= 17) insights.push('Evening departures carry more delay risk — delays cascade through the day.');
+  if (dep >= 21) insights.push('Very late flights are especially unpredictable.');
+  if (dow === 5) insights.push('Fridays see the highest delay rates in the training data.');
+  if (dow === 7) insights.push('Sundays also show elevated delays due to weekend congestion.');
+  if (carrier === 3 || carrier === 6) insights.push('This carrier showed below-average on-time performance in our dataset.');
+  if (origin === 2) insights.push('Midwest hub airports experience more weather and traffic disruptions.');
+  if (dist < 300) insights.push('Short-haul flights are more exposed to gate and ground congestion delays.');
+  if (insights.length === 0) insights.push('This flight profile matches the lower-risk patterns in our training data.');
+
+  document.getElementById('insight-box').innerHTML = '<strong>Key factor:</strong> ' + insights[0];
+}
+</script>
+</body>
+</html>
