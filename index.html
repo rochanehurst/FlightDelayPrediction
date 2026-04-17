@@ -115,7 +115,7 @@
   .chart-card-header h3 { font-size: 14px; font-weight: 500; margin-bottom: 2px; }
   .chart-card-header p { font-size: 12px; color: var(--muted); }
   .chart-img-area { min-height: 220px; display: flex; align-items: center; justify-content: center; background: var(--bg); cursor: zoom-in; position: relative; overflow: hidden; }
-  .chart-img-area img { width: 100%; object-fit: contain; display: block; transition: transform 0.2s ease; pointer-events: none; }
+  .chart-img-area img { width: 100%; object-fit: contain; display: block; transition: transform 0.2s ease; }
   .chart-img-area:hover img { transform: scale(1.02); }
 
   /* LIGHTBOX */
@@ -223,6 +223,7 @@
       <button class="tab-btn active" onclick="showPage('predictor', this)">Predictor</button>
       <button class="tab-btn" onclick="showPage('charts', this)">EDA Charts</button>
       <button class="tab-btn" onclick="showPage('results', this)">Model Results</button>
+      <button class="tab-btn" onclick="showPage('error', this)">Error Analysis</button>
       <button class="tab-btn" onclick="showPage('about', this)">About</button>
     </div>
   </div>
@@ -388,10 +389,6 @@
       <div class="chart-card-header"><h3>Correlation Heatmap</h3><p>No single feature dominates — problem is non-linear</p></div>
       <div class="chart-img-area" onclick="openLightbox('images/fig_correlation_heatmap.png', 'Correlation Heatmap')"><img src="images/fig_correlation_heatmap.png" alt="Correlation heatmap"></div>
     </div>
-    <div class="chart-card">
-      <div class="chart-card-header"><h3>Training Curves</h3><p>MLP vs LSTM loss and AUC over epochs</p></div>
-      <div class="chart-img-area" onclick="openLightbox('images/fig_training_curves.png', 'Training Curves — MLP vs LSTM')"><img src="images/fig_training_curves.png" alt="Training curves"></div>
-    </div>
   </div>
 </div>
 
@@ -427,6 +424,10 @@
   </div>
   <div class="chart-upload-grid" style="margin-bottom: 2rem;">
     <div class="chart-card">
+      <div class="chart-card-header"><h3>Training Curves</h3><p>MLP vs LSTM loss and AUC over epochs</p></div>
+      <div class="chart-img-area" onclick="openLightbox('images/fig_training_curves.png', 'Training Curves — MLP vs LSTM')"><img src="images/fig_training_curves.png" alt="Training curves"></div>
+    </div>
+    <div class="chart-card">
       <div class="chart-card-header"><h3>Model Comparison Chart</h3><p>All metrics side by side</p></div>
       <div class="chart-img-area" onclick="openLightbox('images/fig_model_comparison.png', 'Model Comparison — All Metrics')"><img src="images/fig_model_comparison.png" alt="Model comparison"></div>
     </div>
@@ -445,6 +446,40 @@
   </div>
   <div class="result-note">
     <strong>Why accuracy looks low:</strong> The dataset is ~80% not-delayed. A model that always predicts "not delayed" scores 80% accuracy without learning anything. We focus on <strong>Recall</strong> (catching actual delays) and <strong>F1 Score</strong> as primary metrics. The LSTM's ROC-AUC of 0.6905 means it correctly ranks a delayed flight above a non-delayed flight 69% of the time, versus 50% for random guessing.
+  </div>
+</div>
+
+<!-- ERROR ANALYSIS -->
+<div id="page-error" class="page">
+  <div class="page-header">
+    <h1>Error Analysis</h1>
+    <p>Where and why the models make mistakes — evaluated on the held-out test set.</p>
+  </div>
+  <div class="charts-intro">
+    Understanding model errors is as important as measuring accuracy. These charts show how confident each model is on delayed vs. non-delayed flights, and which departure hours are hardest to predict correctly.
+  </div>
+  <div class="chart-upload-grid">
+    <div class="chart-card">
+      <div class="chart-card-header">
+        <h3>Probability Score Distributions</h3>
+        <p>How confident each model is — separated by true class</p>
+      </div>
+      <div class="chart-img-area" onclick="openLightbox('images/fig_probability_distributions.png', 'Predicted Probability Distributions by True Class')">
+        <img src="images/fig_probability_distributions.png" alt="Probability distributions">
+      </div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-card-header">
+        <h3>LSTM Error Rate by Departure Hour</h3>
+        <p>Early morning and late night departures are the hardest to predict</p>
+      </div>
+      <div class="chart-img-area" onclick="openLightbox('images/fig_error_by_hour.png', 'LSTM Error Rate by Departure Hour')">
+        <img src="images/fig_error_by_hour.png" alt="Error rate by hour">
+      </div>
+    </div>
+  </div>
+  <div class="result-note" style="margin-top: 1.25rem;">
+    <strong>Probability distributions:</strong> A well-separated model produces two distinct humps — one near 0 for non-delayed flights and one near 1 for delayed flights. The overlap in the middle represents the hard cases where the model is uncertain. <strong>Error by hour:</strong> Errors cluster at early morning (0–5 AM) and late night (21–23) departures. These windows have sparse training data and unpredictable disruption patterns that schedule-based features alone cannot capture.
   </div>
 </div>
 
