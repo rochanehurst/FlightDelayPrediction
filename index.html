@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FlightSense — Flight Delay Predictor</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
+
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -545,6 +545,8 @@
 </div>
 
 <script>
+const API_URL = 'https://flightdelayprediction-fsa4.onrender.com';
+
 // ── Page navigation ────────────────────────────────────────────────────────
 function showPage(name, btn) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -552,16 +554,6 @@ function showPage(name, btn) {
   document.getElementById('page-' + name).classList.add('active');
   btn.classList.add('active');
 }
-
-// ── Model state ────────────────────────────────────────────────────────────
-let lstmModel = null;
-let scalerMean = null;
-let scalerScale = null;
-let modelLoaded = false;
-
-// Feature order must match exactly what the notebook used
-// DAY_OF_WEEK, DEP_HOUR, ARR_HOUR, DISTANCE, CARRIER_ENC, ORIGIN_ENC, DEST_ENC
-const FEATURE_ORDER = ['DAY_OF_WEEK', 'DEP_HOUR', 'ARR_HOUR', 'DISTANCE', 'CARRIER_ENC', 'ORIGIN_ENC', 'DEST_ENC'];
 
 function setStatus(state, message) {
   const dot = document.getElementById('status-dot');
@@ -576,48 +568,28 @@ function setButtonReady() {
   btn.textContent = 'Run Prediction';
 }
 
-// ── Load model and scaler ──────────────────────────────────────────────────
-async function loadModel() {
+// ── Check API on load ──────────────────────────────────────────────────────
+async function checkAPI() {
   try {
-    setStatus('loading', 'Loading scaler parameters...');
-    const scalerRes = await fetch('scaler_params.json');
-    if (!scalerRes.ok) throw new Error('scaler_params.json not found');
-    const scalerData = await scalerRes.json();
-    scalerMean  = scalerData.mean;
-    scalerScale = scalerData.scale;
-
-    setStatus('loading', 'Loading LSTM model weights...');
-    lstmModel = await tf.loadLayersModel('tfjs_lstm_model/model.json');
-
-    // Warm up the model with a dummy prediction
-    const dummy = tf.zeros([1, 7, 1]);
-    lstmModel.predict(dummy).dispose();
-    dummy.dispose();
-
-    modelLoaded = true;
-    setStatus('ready', 'LSTM model loaded and ready');
-    setButtonReady();
-
-    // Update tags to show real
-    document.getElementById('tag-lstm').textContent = 'real model';
-    document.getElementById('tag-lstm').className = 'model-tag real';
-
+    setStatus('loading', 'Connecting to prediction server...');
+    const res = await fetch(API_URL + '/');
+    if (res.ok) {
+      setStatus('ready', 'Prediction server ready — using real LSTM model');
+      document.getElementById('tag-lstm').textContent = 'real model';
+      document.getElementById('tag-lstm').className = 'model-tag real';
+    } else {
+      throw new Error('Server not responding');
+    }
   } catch (err) {
-    console.warn('Model load failed:', err.message);
-    setStatus('error', 'Model files not found — using simulated predictions');
-    setButtonReady();
+    setStatus('error', 'Server unavailable — using simulated predictions');
   }
-}
-
-// ── Normalize input ────────────────────────────────────────────────────────
-function normalize(values) {
-  return values.map((v, i) => (v - scalerMean[i]) / scalerScale[i]);
+  setButtonReady();
 }
 
 // ── Sigmoid helper ─────────────────────────────────────────────────────────
 function sigmoid(x) { return 1 / (1 + Math.exp(-x)); }
 
-// ── Fallback simulated predictions ────────────────────────────────────────
+// ── Fallback simulated predictions ─────────────────────────────────────────
 function simulateLogistic(dow, dep, arr, dist, carrier, origin, dest) {
   let z = -1.2;
   z += 0.04 * (dow - 4);
@@ -650,38 +622,46 @@ async function predict() {
   const origin  = +document.getElementById('origin').value;
   const dest    = +document.getElementById('dest').value;
 
-  // Feature vector in same order as notebook: DAY_OF_WEEK, DEP_HOUR, ARR_HOUR, DISTANCE, CARRIER_ENC, ORIGIN_ENC, DEST_ENC
-  const rawFeatures = [dow, dep, arr, dist, carrier, origin, dest];
+  const btn = document.getElementById('predict-btn');
+  btn.disabled = true;
+  btn.textContent = 'Predicting...';
 
-  let pLstm;
+  const pLog = simulateLogistic(dow, dep, arr, dist, carrier, origin, dest);
+  const pMlp = simulateMLP(pLog, dow, dep, dist, carrier);
+  let pLstm = null;
 
-  if (modelLoaded && lstmModel) {
-    // Real LSTM prediction
-    const normalized = normalize(rawFeatures);
-    // Reshape to (1, 7, 1) — batch=1, timesteps=7, features=1
-    const inputTensor = tf.tensor3d([normalized.map(v => [v])]);
-    const outputTensor = lstmModel.predict(inputTensor);
-    const result = await outputTensor.data();
-    pLstm = result[0];
-    inputTensor.dispose();
-    outputTensor.dispose();
-  } else {
-    // Fallback simulation
-    const pLog = simulateLogistic(dow, dep, arr, dist, carrier, origin, dest);
-    const pMlp = simulateMLP(pLog, dow, dep, dist, carrier);
+  try {
+    const res = await fetch(API_URL + '/predict', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        day_of_week: dow,
+        dep_hour: dep,
+        arr_hour: arr,
+        distance: dist,
+        carrier: carrier,
+        origin: origin,
+        dest: dest
+      })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      pLstm = data.probability;
+    }
+  } catch (err) {
+    console.warn('API call failed, using simulation');
+  }
+
+  if (pLstm === null) {
     pLstm = Math.max(0.05, Math.min(0.92, pMlp + Math.abs(origin - dest) * 0.008));
   }
 
-  // Always simulate logistic and MLP for comparison
-  const pLog = simulateLogistic(dow, dep, arr, dist, carrier, origin, dest);
-  const pMlp = simulateMLP(pLog, dow, dep, dist, carrier);
-
-  const ensemble = modelLoaded
-    ? pLog * 0.20 + pMlp * 0.38 + pLstm * 0.42
-    : pLog * 0.20 + pMlp * 0.38 + pLstm * 0.42;
-
+  const ensemble = pLog * 0.20 + pMlp * 0.38 + pLstm * 0.42;
   const pct = Math.round(ensemble * 100);
   const isDelayed = ensemble > 0.5;
+
+  btn.disabled = false;
+  btn.textContent = 'Run Prediction';
 
   // Update UI
   document.getElementById('result-empty').classList.add('hide');
@@ -734,8 +714,8 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') closeLightbox();
 });
 
-// Load model on page init
-loadModel();
+// Check API on page load
+checkAPI();
 </script>
 </body>
 </html>
