@@ -7,7 +7,11 @@ import json
 import os
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, origins=[
+    "https://rochanehurst.github.io",
+    "http://localhost:5500",
+    "http://127.0.0.1:5500"
+])
 
 # Load model and scaler on startup
 model = tf.keras.models.load_model('lstm_flight_delay.keras')
